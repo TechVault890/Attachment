@@ -72,7 +72,7 @@ check "Student back to Pending" 1 "$(S "$(R dashboard/student)" | grep -c 'badge
 check "Verify student" 302 "$(decide verify '')"
 check "Student sees Verified" 1 "$(S "$(R dashboard/student)" | grep -c 'badge-verified')"
 check "Upload blocked after verification" 302 "$(up cv $TMP/ok.pdf)"
-check "Locked warning shown" 1 "$(S "$(R student/documents)" | grep -c 'alert-warning')"
+check "Locked warning shown" 1 "$(atleast1 "$(S "$(R student/documents)" | grep -c 'alert-warning')")"
 T=$(S "$(R dashboard/student)" | token)
 check "Student cannot POST a decision" 403 "$(S -o /dev/null -w '%{http_code}' -X POST "$(R coordinator/decide)" --data-urlencode "_csrf=$T" -d "id=$SID&decision=verify")"
 

@@ -6,3 +6,5 @@
   <div class="card stat"><span class="num"><?= $stats['vacancies'] ?></span> Vacancies</div>
   <div class="card stat"><span class="num"><?= $stats['placements'] ?></span> Placements</div>
 </div>
+<p><a class="btn" href="<?= e(url('window/index')) ?>">Application windows</a>
+   <a class="btn btn-alt" href="<?= e(url('vacancy/browse')) ?>">Browse vacancies</a></p>

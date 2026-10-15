@@ -46,3 +46,9 @@ fieldset.grid{border:0;padding:0;margin:0;min-width:0}
 .filters a{display:inline-block;margin-right:.5rem;padding:.3rem .8rem;border:1px solid var(--line);border-radius:999px;text-decoration:none;background:#fff}
 .filters a.active{background:var(--brand);color:#fff;border-color:var(--brand)}
 ul.plain{list-style:none;padding:0;margin:0}ul.plain li{margin:.4rem 0}
+.badge-open{background:#d9f2e2;color:#0b5a2c}
+.badge-filled{background:#dbe8fb;color:#1a4a8a}
+.badge-closed,.badge-inactive,.badge-ended{background:#e6e9ed;color:#4a5562}
+.badge-upcoming{background:#fff1cc;color:#7a5a00}
+.vac h2{margin:.1rem 0 .3rem;font-size:1.15rem}
+.card form.inline{margin-left:.4rem}

@@ -93,3 +93,7 @@ function valid_date(string $d): bool {
     $x = DateTime::createFromFormat('Y-m-d', $d);
     return $x !== false && $x->format('Y-m-d') === $d;
 }
+
+function ministries(): array {
+    return db()->query('SELECT id, name FROM ministries ORDER BY name')->fetchAll();
+}
