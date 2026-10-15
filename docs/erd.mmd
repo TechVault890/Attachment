@@ -1,0 +1,17 @@
+erDiagram
+  counties ||--o{ institutions : located_in
+  counties ||--o{ students : preferred_by
+  counties ||--o{ vacancies : hosts
+  institutions ||--o{ users : staff_of
+  institutions ||--o{ students : enrols
+  ministries ||--o{ users : staff_of
+  ministries ||--o{ vacancies : posts
+  users ||--o| students : has_profile
+  students ||--o{ documents : uploads
+  students ||--o{ applications : submits
+  vacancies ||--o{ applications : receives
+  applications ||--o| placements : results_in
+  placements ||--o{ assessments : assessed
+  users ||--o{ notifications : receives
+  users ||--o{ audit_log : performs
+  users ||--o{ application_windows : creates
