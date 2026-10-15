@@ -63,3 +63,33 @@ function areas(): array {
 function badge(string $status): string {
     return '<span class="badge badge-' . e($status) . '">' . e(ucfirst($status)) . '</span>';
 }
+
+function doc_types(): array {
+    return [
+        'insurance'             => 'Insurance cover',
+        'recommendation_letter' => 'Recommendation letter from school',
+        'transcript'            => 'Transcript',
+        'cv'                    => 'Curriculum vitae (CV)',
+    ];
+}
+function upload_rules(): array {
+    return [
+        'pdf'  => ['mime' => 'application/pdf',
+                   'detect' => ['application/pdf']],
+        'doc'  => ['mime' => 'application/msword',
+                   'detect' => ['application/msword', 'application/CDFV2', 'application/x-ole-storage', 'application/vnd.ms-office']],
+        'docx' => ['mime' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                   'detect' => ['application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/zip', 'application/octet-stream']],
+    ];
+}
+function notify_coordinators(int $institutionId, string $type, string $title, string $message, ?string $link = null): void {
+    $q = db()->prepare("SELECT id FROM users WHERE role = 'coordinator' AND institution_id = ? AND is_active = 1");
+    $q->execute([$institutionId]);
+    foreach ($q->fetchAll() as $c) {
+        notify((int)$c['id'], $type, $title, $message, $link);
+    }
+}
+function valid_date(string $d): bool {
+    $x = DateTime::createFromFormat('Y-m-d', $d);
+    return $x !== false && $x->format('Y-m-d') === $d;
+}

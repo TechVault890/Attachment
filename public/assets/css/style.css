@@ -35,3 +35,14 @@ form.inline{display:inline}
 .hero h1{font-size:1.8rem;margin-bottom:.5rem}
 .footer{text-align:center;color:var(--muted);padding:1.5rem 1rem;font-size:.9rem}
 @media(max-width:600px){.hero h1{font-size:1.4rem}}
+.table-wrap{overflow-x:auto}
+.table{width:100%;border-collapse:collapse}
+.table th,.table td{padding:.55rem .6rem;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+textarea{width:100%;padding:.6rem .7rem;border:1px solid var(--line);border-radius:6px;font:inherit}
+fieldset.grid{border:0;padding:0;margin:0;min-width:0}
+.btn-sm{padding:.4rem .8rem;margin-top:.25rem;font-size:.9rem}
+.btn-danger{background:#b3261e}.btn-danger:hover{background:#8f1d17}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+.filters a{display:inline-block;margin-right:.5rem;padding:.3rem .8rem;border:1px solid var(--line);border-radius:999px;text-decoration:none;background:#fff}
+.filters a.active{background:var(--brand);color:#fff;border-color:var(--brand)}
+ul.plain{list-style:none;padding:0;margin:0}ul.plain li{margin:.4rem 0}

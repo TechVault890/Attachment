@@ -6,7 +6,8 @@ function dashboard_index(): void {
 
 function dashboard_student(): void {
     $u = require_role('student');
-    $st = db()->prepare('SELECT s.*, i.name AS institution, c.name AS county
+    $st = db()->prepare('SELECT s.*, i.name AS institution, c.name AS county,
+        (SELECT COUNT(*) FROM documents d WHERE d.student_id = s.id) AS doc_count
         FROM students s JOIN institutions i ON i.id = s.institution_id
         JOIN counties c ON c.id = s.preferred_county_id WHERE s.user_id = ?');
     $st->execute([$u['id']]);
@@ -35,7 +36,7 @@ function dashboard_admin(): void {
     $roles = ['student' => 0, 'coordinator' => 0, 'ministry' => 0, 'admin' => 0];
     foreach (db()->query('SELECT role, COUNT(*) AS n FROM users GROUP BY role')->fetchAll() as $r) $roles[$r['role']] = (int)$r['n'];
     $stats = [
-        'vacancies' => (int)db()->query('SELECT COUNT(*) FROM vacancies')->fetchColumn(),
+        'vacancies'  => (int)db()->query('SELECT COUNT(*) FROM vacancies')->fetchColumn(),
         'placements' => (int)db()->query('SELECT COUNT(*) FROM placements')->fetchColumn(),
     ];
     view('dashboard/admin', ['title' => 'Admin dashboard', 'u' => $u, 'roles' => $roles, 'stats' => $stats]);
