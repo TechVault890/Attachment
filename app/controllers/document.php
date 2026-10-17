@@ -11,6 +11,13 @@ function document_download(): void {
         'student'     => (int)$d['owner_id'] === (int)$u['id'],
         'coordinator' => (int)$d['institution_id'] === (int)$u['institution_id'],
         'admin'       => true,
+        // A Ministry may open documents of students who applied to one of its vacancies (and have not withdrawn).
+        'ministry'    => (function () use ($u, $d): bool {
+            $q = db()->prepare("SELECT COUNT(*) FROM applications a JOIN vacancies v ON v.id = a.vacancy_id
+                WHERE a.student_id = ? AND v.ministry_id = ? AND a.status <> 'withdrawn'");
+            $q->execute([$d['student_id'], $u['ministry_id']]);
+            return (int)$q->fetchColumn() > 0;
+        })(),
         default       => false,
     };
     if (!$allowed) {

@@ -97,3 +97,9 @@ function valid_date(string $d): bool {
 function ministries(): array {
     return db()->query('SELECT id, name FROM ministries ORDER BY name')->fetchAll();
 }
+
+function unread_notifications(int $uid): int {
+    $st = db()->prepare('SELECT COUNT(*) FROM notifications WHERE user_id = ? AND is_read = 0');
+    $st->execute([$uid]);
+    return (int)$st->fetchColumn();
+}

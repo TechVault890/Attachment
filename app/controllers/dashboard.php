@@ -1,4 +1,6 @@
 <?php
+require_once __DIR__ . '/../models/application.php';
+
 function dashboard_index(): void {
     $u = require_login();
     redirect('dashboard/' . $u['role']);
@@ -11,7 +13,16 @@ function dashboard_student(): void {
         FROM students s JOIN institutions i ON i.id = s.institution_id
         JOIN counties c ON c.id = s.preferred_county_id WHERE s.user_id = ?');
     $st->execute([$u['id']]);
-    view('dashboard/student', ['title' => 'My dashboard', 'u' => $u, 's' => $st->fetch()]);
+    $s = $st->fetch();
+    $apps = ['applied' => 0, 'shortlisted' => 0, 'placed' => 0, 'unsuccessful' => 0, 'withdrawn' => 0];
+    $placement = null;
+    if ($s) {
+        $q = db()->prepare('SELECT status, COUNT(*) AS n FROM applications WHERE student_id = ? GROUP BY status');
+        $q->execute([$s['id']]);
+        foreach ($q->fetchAll() as $r) $apps[$r['status']] = (int)$r['n'];
+        $placement = get_placement_for_student((int)$s['id']);
+    }
+    view('dashboard/student', ['title' => 'My dashboard', 'u' => $u, 's' => $s, 'apps' => $apps, 'placement' => $placement]);
 }
 
 function dashboard_coordinator(): void {
@@ -28,7 +39,12 @@ function dashboard_ministry(): void {
     $st = db()->prepare("SELECT COUNT(*) AS vacancies, COALESCE(SUM(slots_total - slots_filled),0) AS open_slots
         FROM vacancies WHERE ministry_id = ? AND status = 'open'");
     $st->execute([$u['ministry_id']]);
-    view('dashboard/ministry', ['title' => 'Ministry dashboard', 'u' => $u, 'stats' => $st->fetch()]);
+    $stats = $st->fetch();
+    $q = db()->prepare("SELECT COUNT(*) FROM applications a JOIN vacancies v ON v.id = a.vacancy_id
+        WHERE v.ministry_id = ? AND a.status IN ('applied','shortlisted')");
+    $q->execute([$u['ministry_id']]);
+    $stats['pending'] = (int)$q->fetchColumn();
+    view('dashboard/ministry', ['title' => 'Ministry dashboard', 'u' => $u, 'stats' => $stats]);
 }
 
 function dashboard_admin(): void {

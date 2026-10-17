@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../models/vacancy.php';
+require_once __DIR__ . '/../models/application.php';
 
 function vacancy_browse(): void {
     $county = (int)($_GET['county'] ?? 0);

@@ -52,3 +52,17 @@ ul.plain{list-style:none;padding:0;margin:0}ul.plain li{margin:.4rem 0}
 .badge-upcoming{background:#fff1cc;color:#7a5a00}
 .vac h2{margin:.1rem 0 .3rem;font-size:1.15rem}
 .card form.inline{margin-left:.4rem}
+.badge-applied{background:#dbe8fb;color:#1a4a8a}
+.badge-shortlisted{background:#ece3fb;color:#4a2b8a}
+.badge-unsuccessful{background:#fbdcdc;color:#8a1f1f}
+.badge-withdrawn{background:#e6e9ed;color:#4a5562}
+.badge-suggested{background:#fff1cc;color:#7a5a00}
+.count{display:inline-block;min-width:1.3rem;padding:0 .35rem;border-radius:999px;background:#f2c14e;color:#1c2733;font-size:.8rem;font-weight:700;text-align:center}
+details{margin:.3rem 0}
+details summary{cursor:pointer;color:var(--brand);font-weight:600}
+details label{font-weight:400;margin:.4rem 0 .1rem}
+.notif{border-left:4px solid var(--line)}
+.notif.unread{border-left-color:var(--brand);background:#f3faf6}
+.chips span{display:inline-block;margin:0 .3rem .3rem 0;padding:.1rem .6rem;border-radius:999px;background:#eef1f4;font-size:.85rem}
+.chips .yes{background:#d9f2e2}
+.placement{border-color:var(--brand);background:#f3faf6}

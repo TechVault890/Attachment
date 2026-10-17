@@ -1,4 +1,4 @@
-<?php $nav = current_user(); ?>
+<?php $nav = current_user(); $unread = $nav ? unread_notifications((int)$nav['id']) : 0; ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -17,6 +17,8 @@
       <?php if ($nav['role'] === 'student'): ?>
         <a href="<?= e(url('student/profile')) ?>">Profile</a>
         <a href="<?= e(url('student/documents')) ?>">Documents</a>
+        <a href="<?= e(url('application/mine')) ?>">Applications</a>
+        <a href="<?= e(url('application/matches')) ?>">Recommended</a>
       <?php elseif ($nav['role'] === 'coordinator'): ?>
         <a href="<?= e(url('coordinator/queue')) ?>">Verification</a>
       <?php elseif ($nav['role'] === 'ministry'): ?>
@@ -24,6 +26,7 @@
       <?php elseif ($nav['role'] === 'admin'): ?>
         <a href="<?= e(url('window/index')) ?>">Windows</a>
       <?php endif; ?>
+      <a href="<?= e(url('notification/index')) ?>">Notifications<?php if ($unread > 0): ?> <span class="count"><?= (int)$unread ?></span><?php endif; ?></a>
       <span class="who"><?= e($nav['full_name']) ?> (<?= e($nav['role']) ?>)</span>
       <form method="post" action="<?= e(url('auth/logout')) ?>" class="inline">
         <?= csrf_field() ?><button type="submit" class="link">Log out</button>

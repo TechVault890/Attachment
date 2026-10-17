@@ -13,6 +13,7 @@
     <td><?= e($r['closes_on']) ?></td><td><?= badge($r['status']) ?></td>
     <td>
       <a href="<?= e(url('vacancy/edit', ['id' => $r['id']])) ?>">Edit</a>
+      <a href="<?= e(url('application/applicants', ['vacancy' => $r['id']])) ?>">Applicants</a>
       <form method="post" action="<?= e(url('vacancy/status')) ?>" class="inline">
         <?= csrf_field() ?><input type="hidden" name="id" value="<?= (int)$r['id'] ?>">
         <?php if ($r['status'] === 'closed'): ?><input type="hidden" name="to" value="reopen"><button class="btn btn-sm" type="submit">Reopen</button>
