@@ -66,3 +66,5 @@ details label{font-weight:400;margin:.4rem 0 .1rem}
 .chips span{display:inline-block;margin:0 .3rem .3rem 0;padding:.1rem .6rem;border-radius:999px;background:#eef1f4;font-size:.85rem}
 .chips .yes{background:#d9f2e2}
 .placement{border-color:var(--brand);background:#f3faf6}
+.badge-active,.badge-confirmed,.badge-ongoing{background:#d9f2e2;color:#0b5a2c}
+.badge-completed{background:#dbe8fb;color:#1a4a8a}

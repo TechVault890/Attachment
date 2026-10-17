@@ -1,5 +1,5 @@
 <?php
-// Removes throwaway test data: smoke*/scoord*/smin*/sadm* users, their placements, SMOKE vacancies/windows, uploaded test files.
+// Removes throwaway test data: smoke*/scoord*/smin*/sadm* users, their placements, SMOKE vacancies/windows/institutions/ministries, uploaded test files.
 if (PHP_SAPI !== 'cli') exit;
 require __DIR__ . '/../app/core/bootstrap.php';
 $dir = config()['uploads']['dir'];
@@ -11,5 +11,7 @@ db()->exec("DELETE p FROM placements p JOIN students s ON s.id = p.student_id JO
 $n = db()->exec("DELETE FROM users WHERE username LIKE 'smoke%' OR username LIKE 'scoord%' OR username LIKE 'smin%' OR username LIKE 'sadm%'");
 $v = db()->exec("DELETE FROM vacancies WHERE title LIKE 'SMOKE %'");
 $w = db()->exec("DELETE FROM application_windows WHERE name LIKE 'SMOKE %'");
+$i = db()->exec("DELETE FROM institutions WHERE name LIKE 'SMOKE %'");
+$m = db()->exec("DELETE FROM ministries WHERE name LIKE 'SMOKE %'");
 db()->exec("DELETE FROM notifications WHERE message LIKE 'Smoke Tester%'");
-echo "Cleanup: removed $n users, $v vacancies, $w windows.\n";
+echo "Cleanup: removed $n users, $v vacancies, $w windows, $i institutions, $m ministries.\n";
