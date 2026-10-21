@@ -5,6 +5,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title><?= e($title ?? 'Home') ?> | <?= e(config()['app']['name']) ?></title>
+<link rel="icon" href="data:,">
 <link rel="stylesheet" href="<?= e(asset('css/style.css')) ?>">
 </head>
 <body>
@@ -21,10 +22,15 @@
         <a href="<?= e(url('application/matches')) ?>">Recommended</a>
       <?php elseif ($nav['role'] === 'coordinator'): ?>
         <a href="<?= e(url('coordinator/queue')) ?>">Verification</a>
+        <a href="<?= e(url('coordinator/placed')) ?>">Placed students</a>
       <?php elseif ($nav['role'] === 'ministry'): ?>
         <a href="<?= e(url('vacancy/manage')) ?>">My vacancies</a>
       <?php elseif ($nav['role'] === 'admin'): ?>
         <a href="<?= e(url('window/index')) ?>">Windows</a>
+        <a href="<?= e(url('user/index')) ?>">Users</a>
+        <a href="<?= e(url('org/index')) ?>">Organisations</a>
+        <a href="<?= e(url('report/index')) ?>">Reports</a>
+        <a href="<?= e(url('audit/index')) ?>">Audit log</a>
       <?php endif; ?>
       <a href="<?= e(url('notification/index')) ?>">Notifications<?php if ($unread > 0): ?> <span class="count"><?= (int)$unread ?></span><?php endif; ?></a>
       <span class="who"><?= e($nav['full_name']) ?> (<?= e($nav['role']) ?>)</span>

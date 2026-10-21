@@ -103,3 +103,10 @@ function unread_notifications(int $uid): int {
     $st->execute([$uid]);
     return (int)$st->fetchColumn();
 }
+
+function csv_safe(mixed $v): string {
+    if ($v === null) return '';
+    $s = (string)$v;
+    // Stop spreadsheet formula injection: prefix cells that start with = + - @ tab or CR.
+    return ($s !== '' && strpbrk($s[0], "=+-@\t\r") !== false) ? "'" . $s : $s;
+}

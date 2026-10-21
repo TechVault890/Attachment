@@ -31,7 +31,9 @@ function dashboard_coordinator(): void {
     $st->execute([$u['institution_id']]);
     $counts = ['pending' => 0, 'verified' => 0, 'rejected' => 0];
     foreach ($st->fetchAll() as $r) $counts[$r['status']] = (int)$r['n'];
-    view('dashboard/coordinator', ['title' => 'Coordinator dashboard', 'u' => $u, 'counts' => $counts]);
+    $q = db()->prepare('SELECT COUNT(*) FROM placements p JOIN students s ON s.id = p.student_id WHERE s.institution_id = ?');
+    $q->execute([$u['institution_id']]);
+    view('dashboard/coordinator', ['title' => 'Coordinator dashboard', 'u' => $u, 'counts' => $counts, 'placed' => (int)$q->fetchColumn()]);
 }
 
 function dashboard_ministry(): void {

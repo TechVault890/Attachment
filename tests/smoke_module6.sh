@@ -13,9 +13,9 @@ token(){ grep -o 'name="_csrf" value="[^"]*"' | head -1 | sed 's/.*value="//;s/"
 R(){ echo "$BASE/index.php?r=$1"; }
 J(){ local n=$1; shift; curl -s -c "$TMP/$n.jar" -b "$TMP/$n.jar" "$@"; }
 code(){ local n=$1; shift; J "$n" -o /dev/null -w '%{http_code}' "$@"; }
-post(){ local n=$1 route=$2 T; shift 2; T=$(J "$n" "$(R vacancy/browse)" | token)
+post(){ local n=$1 route=$2 T; shift 2; T=$(J "$n" "$(R vacancy/browse)" | token); [ -z "$T" ] && T=$(J "$n" "$(R auth/register)" | token)
   J "$n" -o /dev/null -w '%{http_code}' -X POST "$(R "$route")" --data-urlencode "_csrf=$T" "$@"; }
-postbody(){ local n=$1 route=$2 T; shift 2; T=$(J "$n" "$(R vacancy/browse)" | token)
+postbody(){ local n=$1 route=$2 T; shift 2; T=$(J "$n" "$(R vacancy/browse)" | token); [ -z "$T" ] && T=$(J "$n" "$(R auth/register)" | token)
   J "$n" -X POST "$(R "$route")" --data-urlencode "_csrf=$T" "$@"; }
 login(){ local n=$1 user=$2 T; T=$(J "$n" "$(R auth/login)" | token)
   J "$n" -o /dev/null -w '%{http_code}' -X POST "$(R auth/login)" --data-urlencode "_csrf=$T" --data-urlencode "identity=$user" --data-urlencode "password=$PW"; }
