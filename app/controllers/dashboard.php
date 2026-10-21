@@ -46,6 +46,9 @@ function dashboard_ministry(): void {
         WHERE v.ministry_id = ? AND a.status IN ('applied','shortlisted')");
     $q->execute([$u['ministry_id']]);
     $stats['pending'] = (int)$q->fetchColumn();
+    $q = db()->prepare("SELECT COUNT(*) FROM placements p JOIN vacancies v ON v.id = p.vacancy_id WHERE v.ministry_id = ? AND p.status = 'pending'");
+    $q->execute([$u['ministry_id']]);
+    $stats['to_approve'] = (int)$q->fetchColumn();
     view('dashboard/ministry', ['title' => 'Ministry dashboard', 'u' => $u, 'stats' => $stats]);
 }
 
@@ -55,7 +58,7 @@ function dashboard_admin(): void {
     foreach (db()->query('SELECT role, COUNT(*) AS n FROM users GROUP BY role')->fetchAll() as $r) $roles[$r['role']] = (int)$r['n'];
     $stats = [
         'vacancies'  => (int)db()->query('SELECT COUNT(*) FROM vacancies')->fetchColumn(),
-        'placements' => (int)db()->query('SELECT COUNT(*) FROM placements')->fetchColumn(),
+        'placements' => (int)db()->query("SELECT COUNT(*) FROM placements WHERE status <> 'pending'")->fetchColumn(),
     ];
     view('dashboard/admin', ['title' => 'Admin dashboard', 'u' => $u, 'roles' => $roles, 'stats' => $stats]);
 }

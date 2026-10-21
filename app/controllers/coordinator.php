@@ -79,7 +79,7 @@ function coordinator_placed(): void {
         (SELECT a.score FROM assessments a WHERE a.placement_id = p.id ORDER BY a.assessed_on DESC, a.id DESC LIMIT 1) AS last_score
         FROM placements p JOIN students s ON s.id = p.student_id JOIN users u ON u.id = s.user_id
         JOIN vacancies v ON v.id = p.vacancy_id JOIN ministries m ON m.id = v.ministry_id
-        JOIN counties c ON c.id = v.county_id WHERE s.institution_id = ?';
+        JOIN counties c ON c.id = v.county_id WHERE s.institution_id = ? AND p.status <> \'pending\'';
     $params = [$u['institution_id']];
     if ($county > 0) {
         $sql .= ' AND v.county_id = ?';
@@ -95,7 +95,7 @@ function coordinator_placed(): void {
 function coordinator_assess(): void {
     $u = require_role('coordinator');
     $pl = get_placement_detail((int)($_GET['id'] ?? 0));
-    if (!$pl || (int)$pl['institution_id'] !== (int)$u['institution_id']) not_found();
+    if (!$pl || (int)$pl['institution_id'] !== (int)$u['institution_id'] || $pl['status'] === 'pending') not_found();
     $errors = [];
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $on = trim((string)($_POST['assessed_on'] ?? ''));

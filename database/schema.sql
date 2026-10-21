@@ -148,7 +148,7 @@ CREATE TABLE placements (
   supervisor_name VARCHAR(120) NULL,
   supervisor_phone VARCHAR(25) NULL,
   supervisor_email VARCHAR(150) NULL,
-  status ENUM('confirmed','ongoing','completed') NOT NULL DEFAULT 'confirmed',
+  status ENUM('pending','confirmed','ongoing','completed') NOT NULL DEFAULT 'confirmed',
   confirmed_by INT UNSIGNED NULL,
   confirmed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_pl_app FOREIGN KEY (application_id) REFERENCES applications(id) ON DELETE RESTRICT,

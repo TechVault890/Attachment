@@ -15,6 +15,14 @@ function match_breakdown(array $s, array $v): array {
 function match_score(array $s, array $v): int {
     return match_breakdown($s, $v)['total'];
 }
+// Automatic placement: the area of interest must match AND the total must reach this minimum.
+function auto_min_match(): int {
+    $v = (int)(config()['placement']['auto_min_match'] ?? 50);
+    return max(1, min(100, $v));
+}
+function auto_placement_ok(array $m): bool {
+    return $m['area'] > 0 && $m['total'] >= auto_min_match();
+}
 function block_reason_for_vacancy(array $v): ?string {
     $today = date('Y-m-d');
     if ($v['status'] !== 'open') return 'This vacancy is not open for applications.';
@@ -38,7 +46,7 @@ function apply_state(array $v, ?array $u): array {
     $q = db()->prepare('SELECT COUNT(*) FROM placements WHERE student_id = ?');
     $q->execute([$s['id']]);
     if ((int)$q->fetchColumn() > 0) {
-        return ['state' => 'placed', 'msg' => 'You have already been placed, so you cannot apply for more vacancies.'];
+        return ['state' => 'placed', 'msg' => 'You already have a placement (it may be awaiting Ministry approval), so you cannot apply for more vacancies.'];
     }
     if ($s['verification_status'] !== 'verified') {
         return ['state' => 'not_verified', 'msg' => 'Only verified students can apply. Your status is ' . $s['verification_status'] . '.'];
@@ -76,13 +84,38 @@ function get_placement_for_student(int $studentId): ?array {
     $st->execute([$studentId]);
     return $st->fetch() ?: null;
 }
-// Confirms a placement atomically: locks application + vacancy rows so slots can never be over-filled.
-function confirm_placement(int $appId, int $byUserId, array $d): array {
+function placement_end_date(?string $start, int $months): ?string {
+    return $start ? (new DateTime($start))->modify('+' . $months . ' months')->format('Y-m-d') : null;
+}
+// When a vacancy is completely full AND nothing is waiting for approval, the remaining applicants
+// are marked unsuccessful. Must be called inside a transaction. Returns the affected student ids.
+function settle_vacancy(PDO $pdo, int $vacancyId, ?int $byUserId): array {
+    $q = $pdo->prepare('SELECT slots_total, slots_filled FROM vacancies WHERE id = ?');
+    $q->execute([$vacancyId]);
+    $v = $q->fetch();
+    if (!$v || (int)$v['slots_filled'] < (int)$v['slots_total']) return [];
+    $q = $pdo->prepare("SELECT COUNT(*) FROM placements WHERE vacancy_id = ? AND status = 'pending'");
+    $q->execute([$vacancyId]);
+    if ((int)$q->fetchColumn() > 0) return [];
+    $q = $pdo->prepare("SELECT student_id FROM applications WHERE vacancy_id = ? AND status IN ('applied','shortlisted')");
+    $q->execute([$vacancyId]);
+    $ids = array_map('intval', array_column($q->fetchAll(), 'student_id'));
+    if ($ids) {
+        $pdo->prepare("UPDATE applications SET status = 'unsuccessful', decision_note = 'All slots for this vacancy have been filled', decided_by = ?, decided_at = NOW() WHERE vacancy_id = ? AND status IN ('applied','shortlisted')")
+            ->execute([$byUserId, $vacancyId]);
+    }
+    return $ids;
+}
+// Reserves a slot for an application, under row locks so slots can never be over-filled.
+//   $d === null  -> automatic placement: a PENDING placement that the Ministry must approve.
+//   $d = [...]   -> manual placement by the Ministry: confirmed straight away with those details.
+function reserve_placement(int $appId, ?int $byUserId, ?array $d = null): array {
     $pdo = db();
     $fail = function (string $m) use ($pdo): array {
         if ($pdo->inTransaction()) $pdo->rollBack();
         return ['ok' => false, 'msg' => $m];
     };
+    $losers = [];
     try {
         $pdo->beginTransaction();
         $q = $pdo->prepare('SELECT * FROM applications WHERE id = ? FOR UPDATE');
@@ -93,44 +126,110 @@ function confirm_placement(int $appId, int $byUserId, array $d): array {
         $q->execute([$app['vacancy_id']]);
         $vac = $q->fetch();
         if (!in_array($app['status'], ['applied', 'shortlisted'], true)) return $fail('This application is no longer active (status: ' . $app['status'] . ').');
+        if ($d === null && $vac['status'] !== 'open') return $fail('This vacancy is not open.');
         if ((int)$vac['slots_filled'] >= (int)$vac['slots_total']) return $fail('All slots for this vacancy are already filled.');
         $q = $pdo->prepare('SELECT verification_status FROM students WHERE id = ? FOR UPDATE');
         $q->execute([$app['student_id']]);
         if ($q->fetchColumn() !== 'verified') return $fail('This student is not verified.');
         $q = $pdo->prepare('SELECT COUNT(*) FROM placements WHERE student_id = ?');
         $q->execute([$app['student_id']]);
-        if ((int)$q->fetchColumn() > 0) return $fail('This student has already been placed.');
+        if ((int)$q->fetchColumn() > 0) return $fail('This student already has a placement.');
 
-        $start = $d['start_date'] !== '' ? $d['start_date'] : null;
-        $end = $start ? (new DateTime($start))->modify('+' . (int)$vac['duration_months'] . ' months')->format('Y-m-d') : null;
-        $pdo->prepare('INSERT INTO placements (application_id, student_id, vacancy_id, start_date, end_date, supervisor_name, supervisor_phone, supervisor_email, confirmed_by) VALUES (?,?,?,?,?,?,?,?,?)')
-            ->execute([$appId, $app['student_id'], $vac['id'], $start, $end,
-                $d['supervisor_name'] !== '' ? $d['supervisor_name'] : null,
-                $d['supervisor_phone'] !== '' ? $d['supervisor_phone'] : null,
-                $d['supervisor_email'] !== '' ? $d['supervisor_email'] : null, $byUserId]);
-
+        if ($d === null) {
+            $pdo->prepare("INSERT INTO placements (application_id, student_id, vacancy_id, status) VALUES (?,?,?,'pending')")
+                ->execute([$appId, $app['student_id'], $vac['id']]);
+            $note = 'Placed automatically (first come, first served)';
+        } else {
+            $start = $d['start_date'] !== '' ? $d['start_date'] : null;
+            $pdo->prepare("INSERT INTO placements (application_id, student_id, vacancy_id, start_date, end_date, supervisor_name, supervisor_phone, supervisor_email, status, confirmed_by) VALUES (?,?,?,?,?,?,?,?,'confirmed',?)")
+                ->execute([$appId, $app['student_id'], $vac['id'], $start, placement_end_date($start, (int)$vac['duration_months']),
+                    $d['supervisor_name'] !== '' ? $d['supervisor_name'] : null,
+                    $d['supervisor_phone'] !== '' ? $d['supervisor_phone'] : null,
+                    $d['supervisor_email'] !== '' ? $d['supervisor_email'] : null, $byUserId]);
+            $note = 'Placement confirmed';
+        }
+        $pid = (int)$pdo->lastInsertId();
         $filled = (int)$vac['slots_filled'] + 1;
         $isFull = $filled >= (int)$vac['slots_total'];
         $pdo->prepare('UPDATE vacancies SET slots_filled = ?, status = ? WHERE id = ?')
             ->execute([$filled, $isFull ? 'filled' : $vac['status'], $vac['id']]);
-        $pdo->prepare("UPDATE applications SET status = 'placed', decided_by = ?, decided_at = NOW(), decision_note = 'Placement confirmed' WHERE id = ?")
-            ->execute([$byUserId, $appId]);
+        $pdo->prepare("UPDATE applications SET status = 'placed', decided_by = ?, decided_at = NOW(), decision_note = ? WHERE id = ?")
+            ->execute([$byUserId, $note, $appId]);
         $pdo->prepare("UPDATE applications SET status = 'withdrawn', decision_note = 'Placed at another vacancy', decided_at = NOW() WHERE student_id = ? AND id <> ? AND status IN ('applied','shortlisted')")
             ->execute([$app['student_id'], $appId]);
-
-        $losers = [];
-        if ($isFull) {
-            $q = $pdo->prepare("SELECT student_id FROM applications WHERE vacancy_id = ? AND id <> ? AND status IN ('applied','shortlisted')");
-            $q->execute([$vac['id'], $appId]);
-            foreach ($q->fetchAll() as $r) $losers[] = (int)$r['student_id'];
-            $pdo->prepare("UPDATE applications SET status = 'unsuccessful', decision_note = 'All slots for this vacancy have been filled', decided_by = ?, decided_at = NOW() WHERE vacancy_id = ? AND id <> ? AND status IN ('applied','shortlisted')")
-                ->execute([$byUserId, $vac['id'], $appId]);
-        }
+        if ($d !== null) $losers = settle_vacancy($pdo, (int)$vac['id'], $byUserId);
         $pdo->commit();
     } catch (PDOException $e) {
         if ($pdo->inTransaction()) $pdo->rollBack();
-        if ($e->getCode() === '23000') return ['ok' => false, 'msg' => 'This student has already been placed.'];
+        if ($e->getCode() === '23000') return ['ok' => false, 'msg' => 'This student already has a placement.'];
         throw $e;
     }
-    return ['ok' => true, 'is_full' => $isFull, 'losers' => $losers];
+    return ['ok' => true, 'pending' => $d === null, 'placement_id' => $pid, 'student_id' => (int)$app['student_id'],
+            'vacancy_id' => (int)$vac['id'], 'is_full' => $isFull, 'losers' => $losers];
+}
+// Manual placement by the Ministry (kept under its old name; also used by the demo seed).
+function confirm_placement(int $appId, int $byUserId, array $d): array {
+    return reserve_placement($appId, $byUserId, $d);
+}
+// The Ministry approves a pending (automatic) placement.
+function approve_placement(int $placementId, int $byUserId, array $d): array {
+    $pdo = db();
+    $fail = function (string $m) use ($pdo): array {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        return ['ok' => false, 'msg' => $m];
+    };
+    try {
+        $pdo->beginTransaction();
+        $q = $pdo->prepare('SELECT * FROM placements WHERE id = ? FOR UPDATE');
+        $q->execute([$placementId]);
+        $pl = $q->fetch();
+        if (!$pl) return $fail('Placement not found.');
+        if ($pl['status'] !== 'pending') return $fail('This placement is not waiting for approval.');
+        $q = $pdo->prepare('SELECT * FROM vacancies WHERE id = ? FOR UPDATE');
+        $q->execute([$pl['vacancy_id']]);
+        $vac = $q->fetch();
+        $start = $d['start_date'] !== '' ? $d['start_date'] : null;
+        $pdo->prepare("UPDATE placements SET status = 'confirmed', start_date = ?, end_date = ?, supervisor_name = ?, supervisor_phone = ?, supervisor_email = ?, confirmed_by = ?, confirmed_at = NOW() WHERE id = ?")
+            ->execute([$start, placement_end_date($start, (int)$vac['duration_months']),
+                $d['supervisor_name'] !== '' ? $d['supervisor_name'] : null,
+                $d['supervisor_phone'] !== '' ? $d['supervisor_phone'] : null,
+                $d['supervisor_email'] !== '' ? $d['supervisor_email'] : null, $byUserId, $placementId]);
+        $pdo->prepare("UPDATE applications SET decided_by = ?, decided_at = NOW(), decision_note = 'Placement confirmed' WHERE id = ?")
+            ->execute([$byUserId, $pl['application_id']]);
+        $losers = settle_vacancy($pdo, (int)$vac['id'], $byUserId);
+        $pdo->commit();
+    } catch (PDOException $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        throw $e;
+    }
+    return ['ok' => true, 'student_id' => (int)$pl['student_id'], 'vacancy_id' => (int)$pl['vacancy_id'], 'losers' => $losers];
+}
+// The Ministry declines a pending placement: the slot is freed and the vacancy reopens.
+function decline_placement(int $placementId, int $byUserId, string $reason): array {
+    $pdo = db();
+    $fail = function (string $m) use ($pdo): array {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        return ['ok' => false, 'msg' => $m];
+    };
+    try {
+        $pdo->beginTransaction();
+        $q = $pdo->prepare('SELECT * FROM placements WHERE id = ? FOR UPDATE');
+        $q->execute([$placementId]);
+        $pl = $q->fetch();
+        if (!$pl) return $fail('Placement not found.');
+        if ($pl['status'] !== 'pending') return $fail('This placement is not waiting for approval.');
+        $q = $pdo->prepare('SELECT * FROM vacancies WHERE id = ? FOR UPDATE');
+        $q->execute([$pl['vacancy_id']]);
+        $q->fetch();
+        $pdo->prepare('DELETE FROM placements WHERE id = ?')->execute([$placementId]);
+        $pdo->prepare("UPDATE vacancies SET slots_filled = GREATEST(slots_filled - 1, 0), status = IF(status = 'filled' AND closes_on >= CURDATE(), 'open', status) WHERE id = ?")
+            ->execute([$pl['vacancy_id']]);
+        $pdo->prepare("UPDATE applications SET status = 'unsuccessful', decision_note = ?, decided_by = ?, decided_at = NOW() WHERE id = ?")
+            ->execute([$reason, $byUserId, $pl['application_id']]);
+        $pdo->commit();
+    } catch (PDOException $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        throw $e;
+    }
+    return ['ok' => true, 'student_id' => (int)$pl['student_id'], 'vacancy_id' => (int)$pl['vacancy_id']];
 }

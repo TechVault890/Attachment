@@ -21,6 +21,11 @@ $ap = apply_state($v, $au);
   <div class="card">
     <h2>Apply for this vacancy</h2>
     <p>Your match: <strong><?= (int)$m['total'] ?>%</strong></p>
+    <?php if (auto_placement_ok($m)): ?>
+    <p class="muted">You match this vacancy, so applying places you automatically (first come, first served). The Ministry then approves or declines your placement.</p>
+    <?php else: ?>
+    <p class="muted">Your area of interest differs from this vacancy, so the Ministry will review your application.</p>
+    <?php endif; ?>
     <p class="chips">
       <span class="<?= $m['area'] ? 'yes' : '' ?>">Area <?= $m['area'] ? 'match' : 'differs' ?> (+<?= (int)$m['area'] ?>)</span>
       <span class="<?= $m['county'] ? 'yes' : '' ?>">County <?= $m['county'] ? 'match' : 'differs' ?> (+<?= (int)$m['county'] ?>)</span>

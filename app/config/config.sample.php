@@ -14,6 +14,9 @@ return [
         'pass'    => 'ChangeMe_2026!',    // XAMPP default: ''
         'charset' => 'utf8mb4',
     ],
+    'placement' => [
+        'auto_min_match' => 50,   // 50 = area of interest must match; 80 = area and county
+    ],
     'uploads' => [
         'dir'      => dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'storage' . DIRECTORY_SEPARATOR . 'uploads',
         'max_size' => 2 * 1024 * 1024,    // 2 MB

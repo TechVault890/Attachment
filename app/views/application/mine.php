@@ -13,12 +13,17 @@
     <td><?= e($r['office_location']) ?>, <?= e($r['county']) ?></td>
     <td><?= e(substr($r['applied_at'], 0, 10)) ?></td>
     <td><?= (int)$r['match'] ?>%</td>
-    <td><?= badge($r['status']) ?>
-      <?php if ($r['decision_note'] && $r['status'] !== 'placed'): ?><br><span class="muted"><?= e($r['decision_note']) ?></span><?php endif; ?>
-      <?php if ($r['status'] === 'placed'): ?>
-        <br><span class="muted">
-        <?php if ($r['start_date']): ?>Start <?= e($r['start_date']) ?> to <?= e((string)$r['end_date']) ?><br><?php endif; ?>
-        <?php if ($r['supervisor_name']): ?>Supervisor: <?= e($r['supervisor_name']) ?><?= $r['supervisor_phone'] ? ', ' . e($r['supervisor_phone']) : '' ?><?php endif; ?></span>
+    <td>
+      <?php if ($r['status'] === 'placed' && $r['pstatus'] === 'pending'): ?>
+        <?= badge('pending') ?><br><span class="muted">Placed automatically. Awaiting Ministry approval.</span>
+      <?php else: ?>
+        <?= badge($r['status']) ?>
+        <?php if ($r['decision_note'] && $r['status'] !== 'placed'): ?><br><span class="muted"><?= e($r['decision_note']) ?></span><?php endif; ?>
+        <?php if ($r['status'] === 'placed'): ?>
+          <br><span class="muted">
+          <?php if ($r['start_date']): ?>Start <?= e($r['start_date']) ?> to <?= e((string)$r['end_date']) ?><br><?php endif; ?>
+          <?php if ($r['supervisor_name']): ?>Supervisor: <?= e($r['supervisor_name']) ?><?= $r['supervisor_phone'] ? ', ' . e($r['supervisor_phone']) : '' ?><?php endif; ?></span>
+        <?php endif; ?>
       <?php endif; ?></td>
     <td><?php if (in_array($r['status'], ['applied', 'shortlisted'], true)): ?>
       <form method="post" action="<?= e(url('application/withdraw')) ?>"><?= csrf_field() ?>

@@ -1,7 +1,7 @@
 <h1>Welcome, <?= e($u['full_name']) ?></h1>
 <?php if ($s): ?>
 <?php if ($placement): ?>
-<div class="card placement"><h2>Your placement</h2>
+<div class="card placement"><h2>Your placement<?= $placement['status'] === 'pending' ? ' (awaiting Ministry approval)' : '' ?></h2>
   <p><strong><?= e($placement['ministry']) ?></strong> &middot; <?= e($placement['department']) ?></p>
   <p><?= e($placement['title']) ?>, <?= e($placement['office_location']) ?>, <?= e($placement['county']) ?></p>
   <?php if ($placement['start_date']): ?><p>Start <?= e($placement['start_date']) ?> to <?= e((string)$placement['end_date']) ?></p><?php endif; ?>

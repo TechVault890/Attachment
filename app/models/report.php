@@ -1,5 +1,6 @@
 <?php
 // Helper names use the "rpt_" prefix so they can never be reached as routes.
+// Placement figures count only APPROVED placements (status <> 'pending').
 function rpt_range(): array {
     $from = trim((string)($_GET['from'] ?? ''));
     $to = trim((string)($_GET['to'] ?? ''));
@@ -21,9 +22,9 @@ function rpt_range_sql(array $r, string $col, array &$params): string {
 }
 function rpt_by_county(array $r): array {
     $p = [];
-    $sql = 'SELECT c.name AS county, COUNT(p.id) AS placements
+    $sql = "SELECT c.name AS county, COUNT(p.id) AS placements
         FROM placements p JOIN vacancies v ON v.id = p.vacancy_id JOIN counties c ON c.id = v.county_id
-        WHERE 1=1' . rpt_range_sql($r, 'p.confirmed_at', $p) . ' GROUP BY c.id, c.name ORDER BY placements DESC, c.name';
+        WHERE p.status <> 'pending'" . rpt_range_sql($r, 'p.confirmed_at', $p) . ' GROUP BY c.id, c.name ORDER BY placements DESC, c.name';
     $st = db()->prepare($sql);
     $st->execute($p);
     return $st->fetchAll();
@@ -33,7 +34,7 @@ function rpt_by_ministry(array $r): array {
     $on = rpt_range_sql($r, 'p.confirmed_at', $p);
     $st = db()->prepare("SELECT m.name AS ministry, COUNT(p.id) AS placements
         FROM ministries m LEFT JOIN vacancies v ON v.ministry_id = m.id
-        LEFT JOIN placements p ON p.vacancy_id = v.id$on
+        LEFT JOIN placements p ON p.vacancy_id = v.id AND p.status <> 'pending'$on
         GROUP BY m.id, m.name ORDER BY placements DESC, m.name");
     $st->execute($p);
     return $st->fetchAll();
@@ -46,7 +47,7 @@ function rpt_by_institution(array $r): array {
         (SELECT COUNT(*) FROM students s WHERE s.institution_id = i.id AND s.verification_status = 'verified') AS verified,
         COUNT(p.id) AS placements
         FROM institutions i LEFT JOIN students st ON st.institution_id = i.id
-        LEFT JOIN placements p ON p.student_id = st.id$on
+        LEFT JOIN placements p ON p.student_id = st.id AND p.status <> 'pending'$on
         GROUP BY i.id, i.name ORDER BY placements DESC, i.name");
     $st->execute($p);
     return $st->fetchAll();
@@ -79,12 +80,12 @@ function rpt_pipeline(): array {
 }
 function rpt_placement_rows(array $r): array {
     $p = [];
-    $sql = 'SELECT u.full_name, s.reg_no, i.name AS institution, s.course, m.name AS ministry, v.title, v.office_location,
+    $sql = "SELECT u.full_name, s.reg_no, i.name AS institution, s.course, m.name AS ministry, v.title, v.office_location,
         c.name AS county, p.start_date, p.end_date, p.supervisor_name, p.supervisor_phone, p.confirmed_at
         FROM placements p JOIN students s ON s.id = p.student_id JOIN users u ON u.id = s.user_id
         JOIN institutions i ON i.id = s.institution_id JOIN vacancies v ON v.id = p.vacancy_id
         JOIN ministries m ON m.id = v.ministry_id JOIN counties c ON c.id = v.county_id
-        WHERE 1=1' . rpt_range_sql($r, 'p.confirmed_at', $p) . ' ORDER BY p.confirmed_at DESC, p.id DESC';
+        WHERE p.status <> 'pending'" . rpt_range_sql($r, 'p.confirmed_at', $p) . ' ORDER BY p.confirmed_at DESC, p.id DESC';
     $st = db()->prepare($sql);
     $st->execute($p);
     return $st->fetchAll();

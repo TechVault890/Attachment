@@ -2,6 +2,35 @@
 require_once __DIR__ . '/../models/student.php';
 require_once __DIR__ . '/../models/application.php';
 
+function placement_details_from_post(): array {
+    $d = [];
+    foreach (['start_date', 'supervisor_name', 'supervisor_phone', 'supervisor_email'] as $k) $d[$k] = trim((string)($_POST[$k] ?? ''));
+    $err = [];
+    if ($d['start_date'] !== '' && (!valid_date($d['start_date']) || $d['start_date'] < date('Y-m-d'))) $err[] = 'Start date must be today or later.';
+    if (mb_strlen($d['supervisor_name']) > 120) $err[] = 'Supervisor name is too long.';
+    if ($d['supervisor_phone'] !== '' && !preg_match('/^[0-9+\s-]{7,20}$/', $d['supervisor_phone'])) $err[] = 'Enter a valid supervisor phone.';
+    if ($d['supervisor_email'] !== '' && (!filter_var($d['supervisor_email'], FILTER_VALIDATE_EMAIL) || strlen($d['supervisor_email']) > 150)) $err[] = 'Enter a valid supervisor email.';
+    return [$d, $err];
+}
+
+// Notifications sent whenever a placement becomes final (approved, or placed manually).
+function after_placement_confirmed(array $s, array $vac, array $d, array $losers): void {
+    $when = $d['start_date'] !== '' ? ' Start date: ' . $d['start_date'] . '.' : '';
+    notify((int)$s['user_id'], 'placement', 'Placement confirmed',
+        'You have been placed at ' . $vac['ministry'] . ' (' . $vac['office_location'] . ', ' . $vac['county'] . ') for "' . $vac['title'] . '".' . $when,
+        url('application/mine'));
+    notify_coordinators((int)$s['institution_id'], 'placement', 'Student placed',
+        $s['full_name'] . ' (' . $s['reg_no'] . ') has been placed at ' . $vac['ministry'] . ', ' . $vac['county'] . '.', url('dashboard/index'));
+    foreach ($losers as $sid) {
+        $ls = get_student_by_id((int)$sid);
+        if ($ls) {
+            notify((int)$ls['user_id'], 'application', 'Application unsuccessful',
+                'Your application for "' . $vac['title'] . '" was not successful because all slots have been filled. ' . next_matches_text($ls),
+                url('application/matches'));
+        }
+    }
+}
+
 function application_apply(): void {
     $u = require_role('student');
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') redirect('application/mine');
@@ -15,7 +44,8 @@ function application_apply(): void {
         redirect('application/mine');
     }
     $s = $ap['student'];
-    $score = $ap['match']['total'];
+    $m = $ap['match'];
+    $score = $m['total'];
     $pdo = db();
     try {
         $q = $pdo->prepare('SELECT id FROM applications WHERE student_id = ? AND vacancy_id = ?');
@@ -36,15 +66,35 @@ function application_apply(): void {
         }
         throw $dup;
     }
+    audit('apply', 'application', $appId, $v['title'] . ' (match ' . $score . '%)');
+
+    $placed = false;
+    if (auto_placement_ok($m)) {
+        $res = reserve_placement($appId, null, null);   // first come, first served
+        $placed = $res['ok'];
+    }
     $q = $pdo->prepare("SELECT id FROM users WHERE role = 'ministry' AND ministry_id = ? AND is_active = 1");
     $q->execute([$v['ministry_id']]);
-    foreach ($q->fetchAll() as $m) {
-        notify((int)$m['id'], 'application', 'New application',
-            $u['full_name'] . ' applied for "' . $v['title'] . '" (match ' . $score . '%).',
-            url('application/applicants', ['vacancy' => $vid]));
+    foreach ($q->fetchAll() as $off) {
+        if ($placed) {
+            notify((int)$off['id'], 'placement', 'Placement awaiting your approval',
+                $u['full_name'] . ' was placed automatically (first come, first served) for "' . $v['title'] . '" (match ' . $score . '%). Please approve or decline.',
+                url('application/applicants', ['vacancy' => $vid]));
+        } else {
+            notify((int)$off['id'], 'application', 'New application',
+                $u['full_name'] . ' applied for "' . $v['title'] . '" (match ' . $score . '%). It needs your review.',
+                url('application/applicants', ['vacancy' => $vid]));
+        }
     }
-    audit('apply', 'application', $appId, $v['title'] . ' (match ' . $score . '%)');
-    flash('success', 'Application submitted. Track it below.');
+    if ($placed) {
+        notify((int)$u['id'], 'placement', 'Placement reserved',
+            'You have been placed at ' . $v['ministry'] . ' (' . $v['office_location'] . ', ' . $v['county'] . ') for "' . $v['title'] .
+            '". The Ministry must still approve it. Your other applications were withdrawn.', url('application/mine'));
+        audit('auto_place', 'application', $appId, $v['title']);
+        flash('success', 'You have been placed. The Ministry will now approve your placement.');
+    } else {
+        flash('success', 'Application submitted. The Ministry will review it.');
+    }
     redirect('application/mine');
 }
 
@@ -53,7 +103,7 @@ function application_mine(): void {
     $s = get_student_by_user((int)$u['id']);
     if (!$s) not_found();
     $st = db()->prepare('SELECT a.*, v.title, v.office_location, v.duration_months, v.course_area, v.county_id, v.status AS vstatus,
-        m.name AS ministry, c.name AS county, p.start_date, p.end_date, p.supervisor_name, p.supervisor_phone, p.supervisor_email
+        m.name AS ministry, c.name AS county, p.status AS pstatus, p.start_date, p.end_date, p.supervisor_name, p.supervisor_phone, p.supervisor_email
         FROM applications a JOIN vacancies v ON v.id = a.vacancy_id JOIN ministries m ON m.id = v.ministry_id
         JOIN counties c ON c.id = v.county_id LEFT JOIN placements p ON p.application_id = a.id
         WHERE a.student_id = ? ORDER BY a.applied_at DESC, a.id DESC');
@@ -96,33 +146,24 @@ function application_applicants(): void {
     $v = get_vacancy((int)($_GET['vacancy'] ?? 0));
     if (!$v) not_found();
     if ($u['role'] === 'ministry' && (int)$u['ministry_id'] !== (int)$v['ministry_id']) not_found();
-    $st = db()->prepare("SELECT a.id AS app_id, a.status, a.applied_at, a.decision_note,
+    $st = db()->prepare("SELECT a.id AS app_id, a.status, a.applied_at, a.decision_note, p.status AS pstatus,
         s.id AS student_id, s.reg_no, s.course, s.area_of_interest, s.preferred_county_id, s.period_months,
         u.full_name, u.email, u.phone, i.name AS institution, c.name AS pref_county
         FROM applications a JOIN students s ON s.id = a.student_id JOIN users u ON u.id = s.user_id
         JOIN institutions i ON i.id = s.institution_id JOIN counties c ON c.id = s.preferred_county_id
-        WHERE a.vacancy_id = ?");
+        LEFT JOIN placements p ON p.application_id = a.id
+        WHERE a.vacancy_id = ? ORDER BY a.applied_at ASC, a.id ASC");
     $st->execute([$v['id']]);
-    $rows = [];
+    $pending = $waiting = $decided = [];
     foreach ($st->fetchAll() as $r) {
         $r['match'] = match_breakdown($r, $v);
         $r['docs'] = get_documents((int)$r['student_id']);
-        $rows[] = $r;
+        if ($r['status'] === 'placed' && $r['pstatus'] === 'pending') $pending[] = $r;
+        elseif (in_array($r['status'], ['applied', 'shortlisted'], true)) $waiting[] = $r;
+        else $decided[] = $r;
     }
-    $group = ['placed' => 0, 'applied' => 1, 'shortlisted' => 1, 'unsuccessful' => 2, 'withdrawn' => 3];
-    usort($rows, fn($a, $b) => [$group[$a['status']], $b['match']['total'], $a['applied_at'], $a['app_id']]
-        <=> [$group[$b['status']], $a['match']['total'], $b['applied_at'], $b['app_id']]);
-    $left = open_slots($v);
-    $n = 0;
-    foreach ($rows as &$r) {
-        $r['suggested'] = false;
-        if (in_array($r['status'], ['applied', 'shortlisted'], true) && $n < $left) {
-            $r['suggested'] = true;
-            $n++;
-        }
-    }
-    unset($r);
-    view('application/applicants', ['title' => 'Applicants', 'v' => $v, 'rows' => $rows, 'slots_left' => $left, 'types' => doc_types()]);
+    view('application/applicants', ['title' => 'Applicants', 'v' => $v, 'pending' => $pending, 'waiting' => $waiting,
+        'decided' => $decided, 'slots_left' => open_slots($v), 'types' => doc_types(), 'min' => auto_min_match()]);
 }
 
 function application_decide(): void {
@@ -138,17 +179,33 @@ function application_decide(): void {
     $action = (string)($_POST['action'] ?? '');
     $s = get_student_by_id((int)$a['student_id']);
     $vac = get_vacancy($vid);
+    $q = db()->prepare('SELECT * FROM placements WHERE application_id = ?');
+    $q->execute([$a['id']]);
+    $pl = $q->fetch() ?: null;
     $active = in_array($a['status'], ['applied', 'shortlisted'], true);
 
-    if ($action === 'shortlist') {
-        if (!$active) { flash('danger', 'This application is no longer active.'); $back(); }
-        if ($a['status'] === 'applied') {
-            db()->prepare("UPDATE applications SET status='shortlisted', decided_by=?, decided_at=NOW() WHERE id=?")->execute([$u['id'], $a['id']]);
-            notify((int)$s['user_id'], 'application', 'You have been shortlisted',
-                'You have been shortlisted for "' . $a['title'] . '". The Ministry will confirm placements soon.', url('application/mine'));
-            audit('shortlist', 'application', (int)$a['id']);
+    if ($action === 'approve' || ($action === 'place' && $a['status'] === 'placed')) {
+        if (!$pl || $pl['status'] !== 'pending') { flash('danger', 'This placement is not waiting for approval.'); $back(); }
+        [$d, $err] = placement_details_from_post();
+        if ($err) { flash('danger', implode(' ', $err)); $back(); }
+        $res = approve_placement((int)$pl['id'], (int)$u['id'], $d);
+        if (!$res['ok']) { flash('danger', $res['msg']); $back(); }
+        after_placement_confirmed($s, $vac, $d, $res['losers']);
+        audit('approve_placement', 'application', (int)$a['id'], $vac['title']);
+        flash('success', $s['full_name'] . '\'s placement approved.' . ($res['losers'] ? ' Other applicants were told the vacancy is filled.' : ''));
+    } elseif ($action === 'decline') {
+        $note = trim((string)($_POST['note'] ?? ''));
+        if (!$pl || $pl['status'] !== 'pending') { flash('danger', 'This placement is not waiting for approval.'); $back(); }
+        if (mb_strlen($note) < 5 || mb_strlen($note) > 255) {
+            flash('danger', 'Give a reason for declining (5 to 255 characters). It is shown to the student.');
+            $back();
         }
-        flash('success', $s['full_name'] . ' shortlisted.');
+        $res = decline_placement((int)$pl['id'], (int)$u['id'], $note);
+        if (!$res['ok']) { flash('danger', $res['msg']); $back(); }
+        notify((int)$s['user_id'], 'placement', 'Placement declined',
+            'The Ministry declined your placement for "' . $vac['title'] . '". Reason: ' . $note . '. ' . next_matches_text($s), url('application/matches'));
+        audit('decline_placement', 'application', (int)$a['id'], $note);
+        flash('success', 'Placement declined. The slot is open again and ' . $s['full_name'] . ' was told why.');
     } elseif ($action === 'reject') {
         $note = trim((string)($_POST['note'] ?? ''));
         if (!$active) { flash('danger', 'This application is no longer active.'); $back(); }
@@ -158,39 +215,18 @@ function application_decide(): void {
         }
         db()->prepare("UPDATE applications SET status='unsuccessful', decision_note=?, decided_by=?, decided_at=NOW() WHERE id=?")->execute([$note, $u['id'], $a['id']]);
         notify((int)$s['user_id'], 'application', 'Application unsuccessful',
-            'Your application for "' . $a['title'] . '" was not successful. Reason: ' . $note . '. ' . next_matches_text($s),
-            url('application/matches'));
+            'Your application for "' . $a['title'] . '" was not successful. Reason: ' . $note . '. ' . next_matches_text($s), url('application/matches'));
         audit('reject_application', 'application', (int)$a['id'], $note);
         flash('success', $s['full_name'] . ' notified that the application was unsuccessful.');
     } elseif ($action === 'place') {
-        $d = [];
-        foreach (['start_date', 'supervisor_name', 'supervisor_phone', 'supervisor_email'] as $k) $d[$k] = trim((string)($_POST[$k] ?? ''));
-        $err = [];
-        if ($d['start_date'] !== '' && (!valid_date($d['start_date']) || $d['start_date'] < date('Y-m-d'))) $err[] = 'Start date must be today or later.';
-        if (mb_strlen($d['supervisor_name']) > 120) $err[] = 'Supervisor name is too long.';
-        if ($d['supervisor_phone'] !== '' && !preg_match('/^[0-9+\s-]{7,20}$/', $d['supervisor_phone'])) $err[] = 'Enter a valid supervisor phone.';
-        if ($d['supervisor_email'] !== '' && (!filter_var($d['supervisor_email'], FILTER_VALIDATE_EMAIL) || strlen($d['supervisor_email']) > 150)) $err[] = 'Enter a valid supervisor email.';
+        if (!$active) { flash('danger', 'This application is no longer active.'); $back(); }
+        [$d, $err] = placement_details_from_post();
         if ($err) { flash('danger', implode(' ', $err)); $back(); }
-
-        $res = confirm_placement((int)$a['id'], (int)$u['id'], $d);
+        $res = reserve_placement((int)$a['id'], (int)$u['id'], $d);
         if (!$res['ok']) { flash('danger', $res['msg']); $back(); }
-
-        $when = $d['start_date'] !== '' ? ' Start date: ' . $d['start_date'] . '.' : '';
-        notify((int)$s['user_id'], 'placement', 'Placement confirmed',
-            'You have been placed at ' . $vac['ministry'] . ' (' . $vac['office_location'] . ', ' . $vac['county'] . ') for "' . $vac['title'] . '".' . $when,
-            url('application/mine'));
-        notify_coordinators((int)$s['institution_id'], 'placement', 'Student placed',
-            $s['full_name'] . ' (' . $s['reg_no'] . ') has been placed at ' . $vac['ministry'] . ', ' . $vac['county'] . '.', url('dashboard/index'));
-        foreach ($res['losers'] as $sid) {
-            $ls = get_student_by_id($sid);
-            if ($ls) {
-                notify((int)$ls['user_id'], 'application', 'Application unsuccessful',
-                    'Your application for "' . $vac['title'] . '" was not successful because all slots have been filled. ' . next_matches_text($ls),
-                    url('application/matches'));
-            }
-        }
+        after_placement_confirmed($s, $vac, $d, $res['losers']);
         audit('place_student', 'application', (int)$a['id'], $vac['title']);
-        flash('success', $s['full_name'] . ' placed.' . ($res['is_full'] ? ' All slots are now filled; other applicants were notified.' : ''));
+        flash('success', $s['full_name'] . ' placed.' . ($res['losers'] ? ' All slots are now filled; other applicants were notified.' : ''));
     } else {
         flash('danger', 'Unknown action.');
     }

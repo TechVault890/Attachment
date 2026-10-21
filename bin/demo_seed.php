@@ -113,7 +113,7 @@ foreach ($vacDefs as $key => [$m, $title, $dept, $office, $county, $area, $slots
 $studentDefs = [
     'demo_amina'  => ['Amina Wanjiru',  'MKU/BBIT/001', 'ICT / Software Development', 'Nairobi', 3, 'placed',        'ict_support'],
     'demo_brian'  => ['Brian Otieno',   'MKU/BBIT/002', 'ICT / Software Development', 'Nairobi', 3, 'verified',      'ict_support'],
-    'demo_cynthia'=> ['Cynthia Achieng','MKU/BBIT/003', 'Accounting & Finance',       'Kiambu',  3, 'verified',      'accounts'],
+    'demo_cynthia'=> ['Cynthia Achieng','MKU/BBIT/003', 'Accounting & Finance',       'Kiambu',  3, 'verified',      'hr'],
     'demo_daniel' => ['Daniel Kiprop',  'MKU/BBIT/004', 'Public Administration',      'Nakuru',  6, 'pending_ready', null],
     'demo_esther' => ['Esther Mwende',  'MKU/BBIT/005', 'Health Sciences',            'Mombasa', 3, 'pending_ready', null],
     'demo_faith'  => ['Faith Njeri',    'MKU/BBIT/006', 'Statistics & Data',          'Nairobi', 3, 'pending_docs',  null],
@@ -136,7 +136,22 @@ foreach ($studentDefs as $username => [$name, $reg, $area, $county, $months, $st
         notify($coord, 'verification', 'Documents complete', $name . ' (' . $reg . ') has uploaded all four documents.',
             url('coordinator/review', ['id' => $sid[$username]]));
     }
-    if ($applyTo) $appId[$username] = demo_apply($pdo, $sid[$username], $vac[$applyTo]);
+    if ($applyTo) {
+        $appId[$username] = demo_apply($pdo, $sid[$username], $vac[$applyTo]);
+        $sv = get_student_by_id($sid[$username]);
+        $vv = get_vacancy($vac[$applyTo]);
+        // Everyone except Amina (placed by hand below) goes through the real automatic placement.
+        if ($username !== 'demo_amina' && auto_placement_ok(match_breakdown($sv, $vv))) {
+            $r = reserve_placement($appId[$username], null, null);
+            if ($r['ok']) {
+                notify($uid[$username], 'placement', 'Placement reserved',
+                    'You have been placed at ' . $vv['ministry'] . ' for "' . $vv['title'] . '". The Ministry must still approve it.', url('application/mine'));
+                notify($officer[$vacDefs[$applyTo][0]], 'placement', 'Placement awaiting your approval',
+                    $name . ' was placed automatically for "' . $vv['title'] . '". Please approve or decline.',
+                    url('application/applicants', ['vacancy' => $vac[$applyTo]]));
+            }
+        }
+    }
 }
 
 $res = confirm_placement($appId['demo_amina'], $officer['MOE'], [
