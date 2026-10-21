@@ -51,7 +51,7 @@ check "Admin cannot deactivate themselves" 1 "$(q "SELECT is_active FROM users W
 echo "--- admin: organisations ---"
 check "Organisations page loads" 200 "$(code adm "$(R org/index)")"
 check "Add institution" 302 "$(post adm org/add -d "type=institution&code=SMK" --data-urlencode "name=SMOKE Uni $N")"
-check "New institution appears on registration form" 1 "$(atleast1 "$(J adm "$(R auth/register)" | grep -c "SMOKE Uni $N")")"
+check "New institution appears on registration form" 1 "$(atleast1 "$(curl -s "$(R auth/register)" | grep -c "SMOKE Uni $N")")"
 post adm org/add -d "type=institution&code=SMK" --data-urlencode "name=SMOKE Uni $N" > /dev/null
 check "Duplicate institution shows an error" 1 "$(atleast1 "$(J adm "$(R org/index)" | grep -c 'alert-danger')")"
 check "Organisations page warns about missing coordinator" 1 "$(atleast1 "$(J adm "$(R org/index)" | grep -c 'No coordinator')")"

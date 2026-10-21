@@ -18,7 +18,7 @@ post(){ local n=$1 route=$2 T; shift 2; T=$(J "$n" "$(R vacancy/browse)" | token
 login(){ local n=$1 user=$2 T; T=$(J "$n" "$(R auth/login)" | token)
   J "$n" -o /dev/null -w '%{http_code}' -X POST "$(R auth/login)" --data-urlencode "_csrf=$T" --data-urlencode "identity=$user" --data-urlencode "password=$PW"; }
 q(){ php tests/dbq.php "$1"; }
-csvcell(){ grep -F "$2" "$TMP/$1.csv" | head -1 | cut -d, -f"$3" | tr -d '\r'; }
+csvcell(){ php tests/csvcell.php "$TMP/$1.csv" "$2" "$3"; }
 export_csv(){ J adm -o "$TMP/$1.csv" -D "$TMP/$1.hdr" -w '%{http_code}' "$(R report/export)&type=$1$2"; }
 
 php tests/make_user.php admin "$AU" "$PW" 0 > /dev/null
