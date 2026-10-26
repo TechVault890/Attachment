@@ -111,14 +111,14 @@ foreach ($vacDefs as $key => [$m, $title, $dept, $office, $county, $area, $slots
 
 // username => [name, reg no, area, county, months, state, vacancy to apply for]
 $studentDefs = [
-    'demo_amina'  => ['Amina Wanjiru',  'MKU/BBIT/001', 'ICT / Software Development', 'Nairobi', 3, 'placed',        'ict_support'],
-    'demo_brian'  => ['Brian Otieno',   'MKU/BBIT/002', 'ICT / Software Development', 'Nairobi', 3, 'verified',      'ict_support'],
-    'demo_cynthia'=> ['Cynthia Achieng','MKU/BBIT/003', 'Accounting & Finance',       'Kiambu',  3, 'verified',      'hr'],
-    'demo_daniel' => ['Daniel Kiprop',  'MKU/BBIT/004', 'Public Administration',      'Nakuru',  6, 'pending_ready', null],
-    'demo_esther' => ['Esther Mwende',  'MKU/BBIT/005', 'Health Sciences',            'Mombasa', 3, 'pending_ready', null],
-    'demo_faith'  => ['Faith Njeri',    'MKU/BBIT/006', 'Statistics & Data',          'Nairobi', 3, 'pending_docs',  null],
-    'demo_george' => ['George Mutua',   'MKU/BBIT/007', 'Human Resource Management',  'Kisumu',  3, 'rejected',      null],
-    'demo_halima' => ['Halima Abdi',    'MKU/BBIT/008', 'Communication & Media',      'Uasin Gishu', 3, 'verified',  'comms'],
+    'demo_amina'   => ['Amina Wanjiru',   'MKU/BBIT/001', 'ICT / Software Development', 'Nairobi',     3, 'placed',        'ict_support'],
+    'demo_brian'   => ['Brian Otieno',    'MKU/BBIT/002', 'ICT / Software Development', 'Nairobi',     3, 'verified',      'ict_support'],
+    'demo_cynthia' => ['Cynthia Achieng', 'MKU/BBIT/003', 'Accounting & Finance',       'Kiambu',      3, 'verified',      'hr'],
+    'demo_daniel'  => ['Daniel Kiprop',   'MKU/BBIT/004', 'Public Administration',      'Nakuru',      6, 'pending_ready', null],
+    'demo_esther'  => ['Esther Mwende',   'MKU/BBIT/005', 'Health Sciences',            'Mombasa',     3, 'pending_ready', null],
+    'demo_faith'   => ['Faith Njeri',     'MKU/BBIT/006', 'Statistics & Data',          'Nairobi',     3, 'pending_docs',  null],
+    'demo_george'  => ['George Mutua',    'MKU/BBIT/007', 'Human Resource Management',  'Kisumu',      3, 'rejected',      null],
+    'demo_halima'  => ['Halima Abdi',     'MKU/BBIT/008', 'Communication & Media',      'Uasin Gishu', 3, 'verified',      'comms'],
 ];
 $sid = []; $uid = []; $appId = [];
 foreach ($studentDefs as $username => [$name, $reg, $area, $county, $months, $state, $applyTo]) {
@@ -138,16 +138,19 @@ foreach ($studentDefs as $username => [$name, $reg, $area, $county, $months, $st
     }
     if ($applyTo) {
         $appId[$username] = demo_apply($pdo, $sid[$username], $vac[$applyTo]);
-        $sv = get_student_by_id($sid[$username]);
-        $vv = get_vacancy($vac[$applyTo]);
-        // Everyone except Amina (placed by hand below) goes through the real automatic placement.
-        if ($username !== 'demo_amina' && auto_placement_ok(match_breakdown($sv, $vv))) {
-            $r = reserve_placement($appId[$username], null, null);
+        if ($state !== 'placed') {   // Amina is placed by hand below; everyone else goes through the real rules
+            $sv = get_student_by_id($sid[$username]);
+            $vv = get_vacancy($vac[$applyTo]);
+            $off = $officer[$vacDefs[$applyTo][0]];
+            $r = auto_placement_ok(match_breakdown($sv, $vv)) ? reserve_placement($appId[$username], null, null) : ['ok' => false];
             if ($r['ok']) {
                 notify($uid[$username], 'placement', 'Placement reserved',
                     'You have been placed at ' . $vv['ministry'] . ' for "' . $vv['title'] . '". The Ministry must still approve it.', url('application/mine'));
-                notify($officer[$vacDefs[$applyTo][0]], 'placement', 'Placement awaiting your approval',
+                notify($off, 'placement', 'Placement awaiting your approval',
                     $name . ' was placed automatically for "' . $vv['title'] . '". Please approve or decline.',
+                    url('application/applicants', ['vacancy' => $vac[$applyTo]]));
+            } else {
+                notify($off, 'application', 'New application', $name . ' applied for "' . $vv['title'] . '". It needs your review.',
                     url('application/applicants', ['vacancy' => $vac[$applyTo]]));
             }
         }
@@ -164,10 +167,12 @@ notify($uid['demo_amina'], 'placement', 'Placement confirmed',
 
 echo "Demo data ready.\n$windowNote\n";
 echo "Password for every demo account: " . DEMO_PW . "\n\n";
-echo "  demo_coord                     coordinator, Mount Kenya University\n";
-echo "  demo_moe / demo_ict / demo_moh Ministry officers\n";
-echo "  demo_amina    placed           demo_brian   verified, applied\n";
-echo "  demo_cynthia  verified         demo_halima  verified, applied\n";
-echo "  demo_daniel, demo_esther       pending, documents uploaded (awaiting the coordinator)\n";
-echo "  demo_faith    pending, no documents       demo_george  rejected\n";
+echo "  demo_coord                      coordinator, Mount Kenya University\n";
+echo "  demo_moe / demo_ict / demo_moh  Ministry officers\n";
+echo "  demo_amina    placement approved\n";
+echo "  demo_brian    placed automatically, awaiting demo_moe's approval\n";
+echo "  demo_halima   placed automatically, awaiting demo_ict's approval\n";
+echo "  demo_cynthia  applied, different area: waits for demo_moe's decision\n";
+echo "  demo_daniel, demo_esther        pending, documents uploaded (awaiting the coordinator)\n";
+echo "  demo_faith    pending, no documents      demo_george  rejected\n";
 echo "\nRemove it all later with: php bin/demo_seed.php --remove\n";
